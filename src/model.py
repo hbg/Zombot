@@ -2,6 +2,7 @@ import numpy as np
 from selenium import webdriver
 from bs4 import BeautifulSoup
 from urllib.request import urlopen, Request
+import urllib
 import json
 import time
 DRIVER = r'C:\Python27\selenium\webdriver\chromedriver.exe'
@@ -16,44 +17,68 @@ class Model(object):
         self.current_url = ""
 
     @staticmethod
-    def get_response(site):
+    def visit(sample):
+        browser.get(sample)
+        time.sleep(1)
+        pass
+
+    @staticmethod
+    def get_response(self, site):
         links = []
         req = Request(site, headers=HEADER)
         resp = urlopen(req)
         html = BeautifulSoup(resp)
         for href in html.find_all('a', href=True):
-            if href['href'][0:1] == '/' or href['href'][0:1] == '#':
+            if href['href'][0:1] == '/':
                 # Using slices is a bit weird, but it may come in handy
-                links.append(browser.current_url + href['href'])
+                links.append("https://github.com" + href['href'])
+            elif href['href'][0:1] == '#':
+                links.append(self.current_url + href['href'])
             else:
                 links.append(href['href'])
         return links
 
-    @staticmethod
-    def emulate() -> list:
-        path = []
-        model = open("model.json").read()
-        markov_values = json.loads(model)
-        for key, value in markov_values.items():
+    def emulate(self):
+        self.layer()
+
+    def layer(self, **kwargs):
+        if kwargs.get("site"):
+            model = open("model.json").read()
+            markov_values = json.loads(model)
+            try:
+                sub_sites = markov_values[kwargs.get("site")]
+            except KeyError:
+                print("Not visited by model")
+                sub_sites = self.get_response(self, kwargs.get("site"))
+            except urllib.error.HTTPError:
+                print("Invalid URL")
+                return self.layer()
             p = []
             e = []
-            for pair in value:
+            for pair in sub_sites:
                 e.append(pair[0])
                 p.append(pair[1])
             sample = np.random.choice(e, 1, p=p)[0]
-            # Not a true Markov Chain since the next sample's URL doesn't depend on the previous sample
-            path.append(sample)
-        for website in path:
-            browser.get(website)
-            time.sleep(1)
-        return path
+            self.visit(sample)
+            self.layer(site=sample)
+        else:
+            model = open("model.json").read()
+            markov_values = json.loads(model)
+            p = []
+            e = []
+            for pair in markov_values[list(markov_values.keys())[0]]:
+                e.append(pair[0])
+                p.append(pair[1])
+            sample = np.random.choice(e, 1, p=p)[0]
+            self.visit(sample)
+            self.layer(site=sample)
 
     def train(self):
         self.current_url = browser.current_url
         while True:
             try:
                 if browser.current_url != self.current_url:
-                    results = self.get_response(self.current_url)
+                    results = self.get_response(self, self.current_url)
                     count = len(results)
                     for line in results:
                         if self.master.get(self.current_url):
