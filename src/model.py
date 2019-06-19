@@ -10,7 +10,6 @@ HEADER = {'User-Agent': 'Mozilla/5.0'}
 browser = webdriver.Chrome(DRIVER)
 # URL = "https://api.hackertarget.com/pagelinks/?q="
 
-
 class Model(object):
     def __init__(self):
         self.master = {}
@@ -46,29 +45,42 @@ class Model(object):
             model = open("model.json").read()
             markov_values = json.loads(model)
             try:
-                sub_sites = markov_values[kwargs.get("site")]
+                sub_sites = markov_values[kwargs.get("site")].items()
+                p = []
+                e = []
+                sum = 0
+                for key, value in sub_sites:
+                    e.append(key)
+                    p.append(value)
+                    sum+=value
+                for i in range(0, len(p)):
+                    p[i] /= sum
+                sample = np.random.choice(e, 1, p=p)[0]
+                self.visit(sample)
+                self.layer(site=sample)
             except KeyError:
                 print("Not visited by model")
                 sub_sites = self.get_response(self, kwargs.get("site"))
+                sample = np.random.choice(sub_sites, 1)[0]
+                self.visit(sample)
+                self.layer(site=sample)
             except urllib.error.HTTPError:
                 print("Invalid URL")
                 return self.layer()
-            p = []
-            e = []
-            for pair in sub_sites:
-                e.append(pair[0])
-                p.append(pair[1])
-            sample = np.random.choice(e, 1, p=p)[0]
-            self.visit(sample)
-            self.layer(site=sample)
+            except Exception:
+                return self.layer()
         else:
             model = open("model.json").read()
             markov_values = json.loads(model)
             p = []
             e = []
-            for pair in markov_values[list(markov_values.keys())[0]]:
-                e.append(pair[0])
-                p.append(pair[1])
+            sum = 0
+            for key, value in markov_values[list(markov_values.keys())[0]].items():
+                e.append(key)
+                p.append(value)
+                sum+=value
+            for i in range(0, len(p)):
+                p[i] /= sum
             sample = np.random.choice(e, 1, p=p)[0]
             self.visit(sample)
             self.layer(site=sample)
@@ -79,21 +91,23 @@ class Model(object):
             try:
                 if browser.current_url != self.current_url:
                     results = self.get_response(self, self.current_url)
-                    count = len(results)
                     for line in results:
-                        if self.master.get(self.current_url):
-                            if browser.current_url in results:
-                                self.master[self.current_url].append(
-                                    [line, (count - int(count / 2)) / (count * (count - 1))]) if line != browser.current_url else self.master[self.current_url].append((line, int(count / 2) / count))
-                            else:
-                                self.master[self.current_url].append((line, 1/count))
-                        else:
-                            if browser.current_url in results:
-                                self.master[self.current_url] = [(line, (count-int(count/2))/(count*(count-1)))] if line != browser.current_url else [(line, int(count/2)/count)]
-                            else:
-                                self.master[self.current_url] = [(line, 1/len(results))]
+                        if self.current_url not in self.master.keys():
+                            self.master[self.current_url] = {}
+                        if line not in self.master[self.current_url].keys():
+                            self.master[self.current_url][line] = 1
+                        if line == browser.current_url:
+                            self.master[self.current_url][line] = self.master[self.current_url][line]+1
                     with open('model.json', 'w') as f:
-                        json.dump(self.master, f)
+                        json.dump(self.master, f, sort_keys=True, indent=4)
                     self.current_url = browser.current_url
             except KeyboardInterrupt:
                 break
+            
+    def check(self, URL):
+        urls = self.master[self.current_url]
+        for i in range(0, len(urls)):
+            if urls[i][0] == URL:
+                index = i
+                return i
+        return True
